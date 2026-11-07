@@ -1,0 +1,75 @@
+name: Android core
+
+# Builds tyrquake_libretro_android.so for the Fire TV (32-bit RetroArch: armeabi-v7a), plus a
+# headless test runner (core-runner) that reports where the core crashes. Every successful
+# build replaces the rolling pre-release "build-<branch>".
+
+on:
+  push:
+    branches: ["**"]
+  workflow_dispatch:
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: armeabi-v7a
+          max-size: 300M
+
+      - name: Build with ndk-build
+        working-directory: jni
+        run: |
+          "$ANDROID_NDK_LATEST_HOME/ndk-build" -j"$(nproc)" APP_ABI=armeabi-v7a APP_PLATFORM=android-21 \
+            NDK_CCACHE=ccache APP_CFLAGS="-w -g"
+
+      - name: Build test runner
+        run: |
+          mkdir -p out
+          "$ANDROID_NDK_LATEST_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/armv7a-linux-androideabi21-clang" \
+            -O2 -w -Ilibretro-common/include .github/scripts/core-runner.c -ldl -o out/core-runner
+
+      - name: Package
+        run: |
+          cp libs/armeabi-v7a/libretro.so out/tyrquake_libretro_android.so
+          cp obj/local/armeabi-v7a/libretro.so out/tyrquake_libretro_android.debug.so
+          cd out
+          zip -9 tyrquake_libretro_android.so.zip tyrquake_libretro_android.so
+          sha256sum * > SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tyrquake-armeabi-v7a
+          path: out/*
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: tyrquake-armeabi-v7a
+          path: dist
+      - name: Publish release
+        run: |
+          cd dist
+          mv tyrquake_libretro_android.so.zip tyrquake_libretro_android-armeabi-v7a.so.zip
+          mv core-runner core-runner-armeabi-v7a
+          tag="build-$(echo "$GITHUB_REF_NAME" | tr '/' '-')"
+          gh release delete "$tag" --yes --cleanup-tag || true
+          gh release create "$tag" tyrquake_libretro_android-armeabi-v7a.so.zip core-runner-armeabi-v7a \
+            tyrquake_libretro_android.debug.so --prerelease --target "$GITHUB_SHA" \
+            --title "$GITHUB_REF_NAME build $(echo "$GITHUB_SHA" | cut -c1-7)" \
+            --notes "Automatic build of $GITHUB_REF_NAME at $GITHUB_SHA."
