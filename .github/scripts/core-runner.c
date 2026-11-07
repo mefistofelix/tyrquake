@@ -216,13 +216,9 @@ static void crash_handler(int sig, siginfo_t *si, void *uc_)
 	ucontext_t *uc = uc_;
 	struct sigcontext *m = &uc->uc_mcontext;
 	n = snprintf(buf, sizeof(buf),
-		"CRASH signal %d code %d addr %p
-  pc %08lx (core+%lx) lr %08lx (core+%lx) sp %08lx cpsr %08lx
-"
-		"  r0 %08lx r1 %08lx r2 %08lx r3 %08lx r4 %08lx r5 %08lx r6 %08lx r7 %08lx
-"
-		"  r8 %08lx r9 %08lx r10 %08lx fp %08lx ip %08lx
-",
+		"CRASH signal %d code %d addr %p\n  pc %08lx (core+%lx) lr %08lx (core+%lx) sp %08lx cpsr %08lx\n"
+		"  r0 %08lx r1 %08lx r2 %08lx r3 %08lx r4 %08lx r5 %08lx r6 %08lx r7 %08lx\n"
+		"  r8 %08lx r9 %08lx r10 %08lx fp %08lx ip %08lx\n",
 		sig, si->si_code, si->si_addr, m->arm_pc, m->arm_pc - core_base, m->arm_lr, m->arm_lr - core_base,
 		m->arm_sp, m->arm_cpsr, m->arm_r0, m->arm_r1, m->arm_r2, m->arm_r3, m->arm_r4, m->arm_r5,
 		m->arm_r6, m->arm_r7, m->arm_r8, m->arm_r9, m->arm_r10, m->arm_fp, m->arm_ip);
@@ -230,14 +226,12 @@ static void crash_handler(int sig, siginfo_t *si, void *uc_)
 	unsigned long *sp = (unsigned long *)m->arm_sp;
 	for (int i = 0, k = 0; i < 512 && k < 24 && n < (int)sizeof(buf) - 40; i++)
 		if (sp[i] > core_base && sp[i] - core_base < 0x800000) {
-			n += snprintf(buf + n, sizeof(buf) - n, "  stack[%d] core+%lx
-", i, sp[i] - core_base);
+			n += snprintf(buf + n, sizeof(buf) - n, "  stack[%d] core+%lx\n", i, sp[i] - core_base);
 			k++;
 		}
 #else
 	(void)uc_;
-	n = snprintf(buf, sizeof(buf), "CRASH signal %d addr %p
-", sig, si->si_addr);
+	n = snprintf(buf, sizeof(buf), "CRASH signal %d addr %p\n", sig, si->si_addr);
 #endif
 	write(1, buf, n);
 	_exit(128 + sig);
@@ -248,6 +242,7 @@ static void crash_handler(int sig, siginfo_t *si, void *uc_)
 
 int main(int argc, char **argv)
 {
+	setvbuf(stdout, NULL, _IOLBF, 0);   /* keep the log when the core crashes */
 	snprintf(sys_dir, sizeof(sys_dir), "system");
 	snprintf(save_dir, sizeof(save_dir), "saves");
 	if (argc < 4) {
@@ -300,8 +295,7 @@ int main(int argc, char **argv)
 		Dl_info di;
 		if (dladdr((void *)p_retro_run, &di))
 			core_base = (uintptr_t)di.dli_fbase;
-		printf("core loaded at %p
-", (void *)core_base);
+		printf("core loaded at %p\n", (void *)core_base);
 		struct sigaction sa;
 		memset(&sa, 0, sizeof(sa));
 		sa.sa_sigaction = crash_handler;
