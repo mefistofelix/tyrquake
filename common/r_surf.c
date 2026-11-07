@@ -1,3 +1,4 @@
+#include <string.h>
 /*
 Copyright (C) 1996-1997 Id Software, Inc.
 
@@ -161,7 +162,9 @@ static void R_LightMapAccum(int *bl, const byte *lightmap, int size, unsigned sc
    }
    /* 4-wide cleanup for size%16 in [4..15] */
    for (; i < batch + batch4; i += 4) {
-      __m128i bytes = _mm_cvtsi32_si128(*(const int *)(lightmap + i));
+      int four;
+      memcpy(&four, lightmap + i, 4);   /* lightmap + i is not 4-byte aligned */
+      __m128i bytes = _mm_cvtsi32_si128(four);
       __m128i bytes16 = _mm_unpacklo_epi8(bytes, zero);
       __m128i bytes32 = _mm_unpacklo_epi16(bytes16, zero);
       __m128i prod = _mm_madd_epi16(bytes32, vscale);
@@ -192,7 +195,8 @@ static void R_LightMapAccum(int *bl, const byte *lightmap, int size, unsigned sc
       vst1q_s32(bl + i + 12, vmlaq_s32(e3, b3, vscale));
    }
    for (; i < batch + batch4; i += 4) {
-      uint32_t four = *(const uint32_t *)(lightmap + i);
+      uint32_t four;
+      memcpy(&four, lightmap + i, 4);   /* unaligned: a plain load faults on 32-bit ARM */
       uint8x8_t b8 = vreinterpret_u8_u32(vdup_n_u32(four));
       uint16x8_t b16 = vmovl_u8(b8);
       int32x4_t b32 = vreinterpretq_s32_u32(vmovl_u16(vget_low_u16(b16)));
